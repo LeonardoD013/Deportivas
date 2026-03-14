@@ -47,7 +47,7 @@ with col_c3:
 st.header("3. Gestión de Bankroll")
 col_b1, col_b2 = st.columns(2)
 with col_b1:
-    bankroll = st.number_input("Bankroll Total ($)", min_value=1.0, step=10.0, value=100.0)
+    bankroll = st.number_input("Bankroll Total (S/)", min_value=1.0, step=10.0, value=100.0)
 with col_b2:
     fraccion_kelly = st.slider("Fracción de Kelly", 0.1, 1.0, 0.25, 0.05, help="0.25 recomendado para seguridad.")
 
