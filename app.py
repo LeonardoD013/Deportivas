@@ -45,10 +45,8 @@ st.header("2. Ingresar Datos de Córners")
 col_cor_l, col_cor_v = st.columns(2)
 with col_cor_l:
     cor_f_l = st.number_input("Córners a Favor (Local)", min_value=0.0, step=0.5, value=5.5)
-    cor_c_l = st.number_input("Córners en Contra (Local)", min_value=0.0, step=0.5, value=4.2)
 with col_cor_v:
     cor_f_v = st.number_input("Córners a Favor (Visita)", min_value=0.0, step=0.5, value=4.8)
-    cor_c_v = st.number_input("Córners en Contra (Visita)", min_value=0.0, step=0.5, value=5.0)
 
 st.header("3. Cuotas de la Casa de Apuestas")
 st.subheader("Mercado Principal (1X2)")
@@ -94,8 +92,8 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
     xg_visita_proyectado = (xg_f_v + xg_c_l) / 2
     
     # Cálculos Córners
-    cor_local_proyectado = (cor_f_l + cor_c_v) / 2
-    cor_visita_proyectado = (cor_f_v + cor_c_l) / 2
+    cor_local_proyectado = cor_f_l
+    cor_visita_proyectado = cor_f_v
     total_corners_proyectado = cor_local_proyectado + cor_visita_proyectado
     
     st.markdown("---")
@@ -207,4 +205,3 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
             
         if any(rec["vent"] > 50 for rec in recomendaciones):
             st.error("⚠️ RIESGO EXTREMO: Hay ventajas anómalas (>50%). Revisa bien los datos ingresados o posibles lesiones.")
-
