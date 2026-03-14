@@ -106,10 +106,10 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
         
     recomendado = False
     if vent_l > 0:
-        st.success(f"🔥 LOCAL: Apostar ${apuesta_l:.2f}")
+        st.success(f"🔥 LOCAL: Apostar S/{apuesta_l:.2f}")
         recomendado = True
     if vent_v > 0:
-        st.success(f"🔥 VISITA: Apostar ${apuesta_v:.2f}")
+        st.success(f"🔥 VISITA: Apostar S/{apuesta_v:.2f}")
         recomendado = True
     
     if not recomendado:
