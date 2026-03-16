@@ -1,94 +1,68 @@
-import requests
+import requests, io
 import pandas as pd
-from bs4 import BeautifulSoup
 import streamlit as st
 
-@st.cache_data(ttl=86400) # Cachear por 24 horas (86400 segundos) para no banear la IP
-def obtener_datos_liga_fbref(url_liga):
-    """
-    Descarga la tabla de estadísticas avanzadas de una liga desde FBref.
-    Retorna un DataFrame o None si hay error.
-    """
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-    }
-    
-    try:
-        response = requests.get(url_liga, headers=headers)
-        response.raise_for_status()
-        
-        # Parseamos el HTML con BeautifulSoup
-        soup = BeautifulSoup(response.content, 'lxml')
-        
-        # Buscamos la tabla de la temporada regular
-        # FBref suele tener el id "results{año}X{id_liga}_overall"
-        # Para ser más genéricos buscamos la primera tabla de stats
-        tablas = soup.find_all('table', {'class': 'stats_table'})
-        
-        if not tablas:
-            return None
-            
-        tabla_principal = tablas[0]
-        
-        # Convertimos la tabla a un DataFrame de Pandas
-        df = pd.read_html(str(tabla_principal))[0]
-        
-        # Limpieza de Pandas tras leer FBref (MultiIndex)
-        if isinstance(df.columns, pd.MultiIndex):
-            # Aplanamos el MultiIndex de la cabecera
-            df.columns = ['_'.join(col).strip() for col in df.columns.values]
-            
-        # Nombres de columnas mapeados (FBref usa niveles, así que "Expected_xG" suele ser el estándar, 
-        # pero para asegurarnos buscamos en nombres de forma flexible)
-        
-        nombres_equipos = []
-        xg_favor = []
-        xg_contra = []
-        
-        for index, row in df.iterrows():
-            # Buscando columnas clave (varía un poco si es MultiIndex o no)
-            equipo = row.filter(regex='(?i)squad').values[0] if len(row.filter(regex='(?i)squad')) > 0 else None
-            
-            # Buscando expected goals
-            # FBref pone "Expected_xG" y "Expected_xGA" si es MultiIndex
-            col_xg = row.filter(regex='(?i)xG$').values
-            col_xga = row.filter(regex='(?i)xGA').values
-            
-            if equipo and len(col_xg) > 0 and len(col_xga) > 0:
-                nombres_equipos.append(equipo)
-                xg_favor.append(float(col_xg[0]))
-                xg_contra.append(float(col_xga[0]))
-                
-        if not nombres_equipos:
-            return None
-            
-        df_limpio = pd.DataFrame({
-            'Equipo': nombres_equipos,
-            'xG_Favor': xg_favor,
-            'xG_Contra': xg_contra
-        })
-        
-        partidos_jugados = row.filter(regex='(?i)MP').values[0]
-        
-        # Calculamos el promedio por partido (por los general FBref muestra el acumulativo de la temporada)
-        df_limpio['xG_Favor_Avg'] = round(df_limpio['xG_Favor'] / partidos_jugados, 2)
-        df_limpio['xG_Contra_Avg'] = round(df_limpio['xG_Contra'] / partidos_jugados, 2)
-        
-        # Limpiamos prefijos extraños en los nombres si existen (ej: "1. Arsenal" -> "Arsenal", "eng Arsenal" -> "Arsenal")
-        df_limpio['Equipo'] = df_limpio['Equipo'].str.replace(r'^[a-z]{2,3}\s', '', regex=True)
-        df_limpio['Equipo'] = df_limpio['Equipo'].str.replace(r'^\d+\.\s', '', regex=True)
-        
-        return df_limpio.sort_values('Equipo').reset_index(drop=True)
-        
-    except Exception as e:
-        print(f"Error extrayendo datos: {e}")
-        return None
+# football-data.co.uk libera CSVs con resultados de cada liga.
+# Campos clave: HomeTeam, AwayTeam, FTHG (goles local), FTAG (goles visita)
+# Usaremos el promedio de goles como estimador de xG cuando no hay fuente de xG disponible.
 
-# URLs base de ligas principales para la temporada 2024-2025
+_HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0'}
+
 LIGAS_DISPONIBLES = {
-    "Premier League": "https://fbref.com/en/comps/9/Premier-League-Stats",
-    "La Liga 🇪🇸": "https://fbref.com/en/comps/12/La-Liga-Stats",
-    "Serie A 🇮🇹": "https://fbref.com/en/comps/11/Serie-A-Stats",
-    "Bundesliga 🇩🇪": "https://fbref.com/en/comps/20/Bundesliga-Stats",
-    "Ligue 1 🇫🇷": "https://fbref.com/en/comps/13/Ligue-1-Stats"
+    "Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
+    "La Liga 🇪🇸":              "https://www.football-data.co.uk/mmz4281/2425/SP1.csv",
+    "Serie A 🇮🇹":              "https://www.football-data.co.uk/mmz4281/2425/I1.csv",
+    "Bundesliga 🇩🇪":           "https://www.football-data.co.uk/mmz4281/2425/D1.csv",
+    "Ligue 1 🇫🇷":              "https://www.football-data.co.uk/mmz4281/2425/F1.csv",
 }
+
+@st.cache_data(ttl=3600, show_spinner=False)  # refresco cada hora
+def obtener_datos_liga_fbref(url_liga: str) -> pd.DataFrame | None:
+    """
+    Descarga un CSV de resultados desde football-data.co.uk y calcula
+    el promedio de goles a favor (xG proxy) y en contra (xGA proxy)
+    por partido para cada equipo.
+    Retorna DataFrame con columnas: Equipo, xG_Favor_Avg, xG_Contra_Avg
+    """
+    try:
+        resp = requests.get(url_liga, headers=_HEADERS, timeout=15)
+        resp.raise_for_status()
+
+        # Detectar encoding del CSV (a veces latin-1)
+        try:
+            df_raw = pd.read_csv(io.StringIO(resp.content.decode('utf-8')))
+        except UnicodeDecodeError:
+            df_raw = pd.read_csv(io.StringIO(resp.content.decode('latin-1')))
+
+        # Columnas requeridas
+        for col in ['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG']:
+            if col not in df_raw.columns:
+                return None
+
+        df_raw = df_raw.dropna(subset=['HomeTeam', 'AwayTeam', 'FTHG', 'FTAG'])
+
+        equipos = sorted(set(df_raw['HomeTeam'].tolist() + df_raw['AwayTeam'].tolist()))
+
+        rows = []
+        for equipo in equipos:
+            como_local   = df_raw[df_raw['HomeTeam'] == equipo]
+            como_visita  = df_raw[df_raw['AwayTeam']  == equipo]
+
+            total_goles_fav  = como_local['FTHG'].sum()  + como_visita['FTAG'].sum()
+            total_goles_con  = como_local['FTAG'].sum()  + como_visita['FTHG'].sum()
+            total_partidos   = len(como_local) + len(como_visita)
+
+            if total_partidos == 0:
+                continue
+
+            rows.append({
+                'Equipo':          equipo,
+                'xG_Favor_Avg':    round(total_goles_fav  / total_partidos, 2),
+                'xG_Contra_Avg':   round(total_goles_con  / total_partidos, 2),
+            })
+
+        return pd.DataFrame(rows).sort_values('Equipo').reset_index(drop=True) or None
+
+    except Exception as e:
+        print(f"[data_scraper] Error: {e}")
+        return None
