@@ -175,7 +175,7 @@ def calculadora_profesional(xg_favor_local, xg_contra_local, xg_favor_visita, xg
 
     # 4. Simulación de Monte Carlo (10,000 partidos)
     print("INICIANDO SIMULACIÓN DE MONTE CARLO (10,000 Partidos)...")
-    prob_btts, prob_o15, prob_o25 = simulacion_monte_carlo(xg_local_proyectado, xg_visita_proyectado)
+    prob_btts, _, prob_o15, _, prob_o25, _ = simulacion_monte_carlo_extendida(xg_local_proyectado, xg_visita_proyectado)
     
     print("="*45)
     print("MERCADOS SECUNDARIOS (Probabilidad Real vs Cuota Mínima)")
@@ -185,22 +185,22 @@ def calculadora_profesional(xg_favor_local, xg_contra_local, xg_favor_visita, xg
     print(f"Más de 2.5 Goles    : {prob_o25*100:>6.2f}% | Cuota Min: {1/prob_o25 if prob_o25 > 0 else float('inf'):.2f}")
     print("="*45)
 
-# Ejemplo práctico: Un partido clásico donde el Local es ligeramente superior
+if __name__ == '__main__':
+    # Ejemplo práctico: Un partido clásico donde el Local es ligeramente superior
+    # calcular_cuotas_justas(xg_local=0.93, xg_visitante=1.45)
 
-#calcular_cuotas_justas(xg_local=0.93, xg_visitante=1.45)
+    # --- CONFIGURACIÓN DE TU PARTIDO ---
+    calculadora_profesional(
+        xg_favor_local=1.96,     # Cuánto ataca el local
+        xg_contra_local=1.35,    # Cuánto le marcan al local
 
-# --- CONFIGURACIÓN DE TU PARTIDO ---
-calculadora_profesional(
-    xg_favor_local=1.96,     # Cuánto ataca el local
-    xg_contra_local=1.35,    # Cuánto le marcan al local
+        xg_favor_visita=1.52,    # Cuánto ataca la visita
+        xg_contra_visita=1.24,   # Cuánto le marcan a la visita
 
-    xg_favor_visita=1.52,    # Cuánto ataca la visita
-    xg_contra_visita=1.24,   # Cuánto le marcan a la visita
+        cuota_casa_local=1.83, 
+        cuota_casa_empate=4.10,
+        cuota_casa_visita=3.90,
 
-    cuota_casa_local=1.83, 
-    cuota_casa_empate=4.10,
-    cuota_casa_visita=3.90,
-
-    bankroll=2.50,        # Tu dinero total disponible
-    fraccion_kelly=0.25   # Recomendado: 0.25 para seguridad
-)
+        bankroll=2.50,        # Tu dinero total disponible
+        fraccion_kelly=0.25   # Recomendado: 0.25 para seguridad
+    )
