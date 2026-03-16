@@ -86,7 +86,7 @@ def obtener_datos_liga_fbref(url_liga):
 
 # URLs base de ligas principales para la temporada 2024-2025
 LIGAS_DISPONIBLES = {
-    "Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿": "https://fbref.com/en/comps/9/Premier-League-Stats",
+    "Premier League": "https://fbref.com/en/comps/9/Premier-League-Stats",
     "La Liga 🇪🇸": "https://fbref.com/en/comps/12/La-Liga-Stats",
     "Serie A 🇮🇹": "https://fbref.com/en/comps/11/Serie-A-Stats",
     "Bundesliga 🇩🇪": "https://fbref.com/en/comps/20/Bundesliga-Stats",
