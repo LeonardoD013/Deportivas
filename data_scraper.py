@@ -9,7 +9,7 @@ import streamlit as st
 _HEADERS = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/123.0.0.0'}
 
 LIGAS_DISPONIBLES = {
-    "Premier League 🏴󠁧󠁢󠁥󠁮󠁧󠁿": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
+    "Premier League": "https://www.football-data.co.uk/mmz4281/2425/E0.csv",
     "La Liga 🇪🇸":              "https://www.football-data.co.uk/mmz4281/2425/SP1.csv",
     "Serie A 🇮🇹":              "https://www.football-data.co.uk/mmz4281/2425/I1.csv",
     "Bundesliga 🇩🇪":           "https://www.football-data.co.uk/mmz4281/2425/D1.csv",
