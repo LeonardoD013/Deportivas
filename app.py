@@ -2,24 +2,22 @@ import streamlit as st
 import numpy as np
 import math
 from scipy.stats import poisson
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
-def simulacion_monte_carlo(xg_local, xg_visita, num_simulaciones=10000):
-    goles_local = np.random.poisson(xg_local, num_simulaciones)
-    goles_visita = np.random.poisson(xg_visita, num_simulaciones)
-    
-    ambos_marcan = np.sum((goles_local > 0) & (goles_visita > 0)) / num_simulaciones
-    ambos_no_marcan = 1 - ambos_marcan
-    
-    over_1_5 = np.sum((goles_local + goles_visita) > 1.5) / num_simulaciones
-    under_1_5 = 1 - over_1_5
-    
-    over_2_5 = np.sum((goles_local + goles_visita) > 2.5) / num_simulaciones
-    under_2_5 = 1 - over_2_5
-    
-    return ambos_marcan, ambos_no_marcan, over_1_5, under_1_5, over_2_5, under_2_5
+from odds_predictor import simulacion_monte_carlo_extendida, calcular_kelly, calcular_poisson_partido
+
+@st.cache_data(show_spinner=False)
+def obtener_simulacion_monte_carlo(xg_local, xg_visita, num_simulaciones=10000):
+    return simulacion_monte_carlo_extendida(xg_local, xg_visita, num_simulaciones)
 
 # Configuración de página
 st.set_page_config(page_title="Odds Predictor", page_icon="⚽", layout="centered")
+
+# Inicializar Base de Datos en Memoria (Session State)
+if 'historial' not in st.session_state:
+    st.session_state.historial = []
 
 st.title("⚽ Calculadora Profesional de Apuestas")
 st.markdown("Basada en el modelo de Poisson y Criterio de Kelly. **Perfecta para usar desde tu móvil.📱**")
@@ -97,56 +95,50 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
     total_corners_proyectado = cor_local_proyectado + cor_visita_proyectado
     
     st.markdown("---")
-    st.subheader("📊 Análisis de Goles y Córners")
-    st.info(f"**Goles Esperados (xG):** Local {xg_local_proyectado:.2f} | Visita {xg_visita_proyectado:.2f}")
-    st.info(f"**Córners Proyectados:** Local {cor_local_proyectado:.2f} | Visita {cor_visita_proyectado:.2f} | Total: {total_corners_proyectado:.2f}")
+    st.subheader("📊 Análisis del Partido y la Casa de Apuestas")
+    
+    # Overround 1X2
+    margen_casa = (1 / cuota_l + 1 / cuota_e + 1 / cuota_v) - 1
+    
+    col_inf1, col_inf2 = st.columns(2)
+    with col_inf1:
+        st.info(f"**Goles Esperados (xG):** Local {xg_local_proyectado:.2f} | Visita {xg_visita_proyectado:.2f}\n*(Ajuste Dixon-Coles aplicado para empates)*")
+        st.info(f"**Córners Proyectados:** L. {cor_local_proyectado:.2f} | V. {cor_visita_proyectado:.2f} | T. {total_corners_proyectado:.2f}")
+    with col_inf2:
+        if margen_casa > 0.08:
+            st.error(f"💀 **Margen de la Casa:** {margen_casa*100:.1f}%\nMercado con mucha comisión, difícil hallar rentabilidad.")
+        elif margen_casa > 0.05:
+            st.warning(f"⚠️ **Margen de la Casa:** {margen_casa*100:.1f}%\nComisión moderada, apuesta con cautela.")
+        else:
+            st.success(f"✅ **Margen de la Casa:** {margen_casa*100:.1f}%\nBuena línea, baja comisión de la casa.")
     
     # Poisson Goles
-    prob_local = 0
-    prob_visita = 0
-    prob_empate = 0
-    max_goles = 7
-    for g_l in range(max_goles):
-        for g_v in range(max_goles):
-            prob = poisson.pmf(g_l, xg_local_proyectado) * poisson.pmf(g_v, xg_visita_proyectado)
-            if g_l > g_v: prob_local += prob
-            elif g_v > g_l: prob_visita += prob
-            else: prob_empate += prob
-
-    def calcular_kelly(p, cuota_casa):
-        if p <= 0 or cuota_casa <= 1.0: return 0.0, float('inf'), 0.0
-        q = 1 - p
-        b = cuota_casa - 1
-        c_justa = 1 / p
-        kelly = ((b * p) - q) / b
-        apuesta = max(0, bankroll * kelly * fraccion_kelly)
-        ventaja = (cuota_casa / c_justa - 1) * 100
-        return apuesta, c_justa, ventaja
+    prob_local, prob_empate, prob_visita = calcular_poisson_partido(xg_local_proyectado, xg_visita_proyectado)
 
     # Kelly Principal
-    apuesta_l, c_justa_l, vent_l = calcular_kelly(prob_local, cuota_l)
-    apuesta_v, c_justa_v, vent_v = calcular_kelly(prob_visita, cuota_v)
+    apuesta_l, c_justa_l, vent_l = calcular_kelly(prob_local, cuota_l, bankroll, fraccion_kelly)
+    apuesta_v, c_justa_v, vent_v = calcular_kelly(prob_visita, cuota_v, bankroll, fraccion_kelly)
     c_justa_e = 1/prob_empate if prob_empate > 0 else float('inf')
 
     # Simulacion Mercados Secundarios (Goles)
-    prob_btts_si, prob_btts_no, prob_o15, prob_u15, prob_o25, prob_u25 = simulacion_monte_carlo(xg_local_proyectado, xg_visita_proyectado)
+    prob_btts_si, prob_btts_no, prob_o15, prob_u15, prob_o25, prob_u25 = obtener_simulacion_monte_carlo(xg_local_proyectado, xg_visita_proyectado)
     
     # Probabilidades Córners
     prob_u_cor = poisson.cdf(math.floor(linea_corners), total_corners_proyectado)
     prob_o_cor = 1 - prob_u_cor
 
     # Kelly Secundarios
-    ap_btts_si, cj_btts_si, v_btts_si = calcular_kelly(prob_btts_si, cuota_btts_si)
-    ap_btts_no, cj_btts_no, v_btts_no = calcular_kelly(prob_btts_no, cuota_btts_no)
+    ap_btts_si, cj_btts_si, v_btts_si = calcular_kelly(prob_btts_si, cuota_btts_si, bankroll, fraccion_kelly)
+    ap_btts_no, cj_btts_no, v_btts_no = calcular_kelly(prob_btts_no, cuota_btts_no, bankroll, fraccion_kelly)
     
-    ap_o15, cj_o15, v_o15 = calcular_kelly(prob_o15, cuota_o15)
-    ap_u15, cj_u15, v_u15 = calcular_kelly(prob_u15, cuota_u15)
+    ap_o15, cj_o15, v_o15 = calcular_kelly(prob_o15, cuota_o15, bankroll, fraccion_kelly)
+    ap_u15, cj_u15, v_u15 = calcular_kelly(prob_u15, cuota_u15, bankroll, fraccion_kelly)
     
-    ap_o25, cj_o25, v_o25 = calcular_kelly(prob_o25, cuota_o25)
-    ap_u25, cj_u25, v_u25 = calcular_kelly(prob_u25, cuota_u25)
+    ap_o25, cj_o25, v_o25 = calcular_kelly(prob_o25, cuota_o25, bankroll, fraccion_kelly)
+    ap_u25, cj_u25, v_u25 = calcular_kelly(prob_u25, cuota_u25, bankroll, fraccion_kelly)
     
-    ap_o_cor, cj_o_cor, v_o_cor = calcular_kelly(prob_o_cor, cuota_o_cor)
-    ap_u_cor, cj_u_cor, v_u_cor = calcular_kelly(prob_u_cor, cuota_u_cor)
+    ap_o_cor, cj_o_cor, v_o_cor = calcular_kelly(prob_o_cor, cuota_o_cor, bankroll, fraccion_kelly)
+    ap_u_cor, cj_u_cor, v_u_cor = calcular_kelly(prob_u_cor, cuota_u_cor, bankroll, fraccion_kelly)
 
     st.subheader("📈 Mercado Principal (1X2)")
     st.markdown(f'''
@@ -178,6 +170,25 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
     ''')
 
     st.markdown("---")
+    st.subheader("📊 Gráfico Comparativo: Cuota Justa vs Casa de Apuestas")
+    # Generar comparativa para el mercado Principal
+    df_chart = pd.DataFrame({
+        "Mercado": ["Local", "Visita", "Empate"],
+        "Cuota Justa (Real)": [c_justa_l, c_justa_v, c_justa_e],
+        "Cuota Casa": [cuota_l, cuota_v, cuota_e]
+    })
+    
+    # Prevenir que la cuota de empate distorsione el gráfico si es muy alta
+    if c_justa_e > 20: df_chart.loc[2, "Cuota Justa (Real)"] = 20
+    
+    fig = go.Figure(data=[
+        go.Bar(name='Cuota Justa (Nuestro Modelo)', x=df_chart['Mercado'], y=df_chart['Cuota Justa (Real)'], marker_color='#1f77b4'),
+        go.Bar(name='Cuota de la Casa', x=df_chart['Mercado'], y=df_chart['Cuota Casa'], marker_color='#ff7f0e')
+    ])
+    fig.update_layout(barmode='group', title="Comparativa 1X2 (Las cuotas de la casa DEBEN ser mayores a nuestra cuota justa)")
+    st.plotly_chart(fig, use_container_width=True)
+
+    st.markdown("---")
     st.subheader("💡 Recomendaciones Destacadas")
     
     apuestas = [
@@ -202,6 +213,27 @@ if st.button("🚀 CALCULAR PRONÓSTICO", use_container_width=True, type="primar
         recomendaciones.sort(key=lambda x: x["vent"], reverse=True)
         for rec in recomendaciones:
             st.success(f"🔥 **{rec['desc']}**: Apostar S/ {rec['apuesta']:.2f} (Ventaja: {rec['vent']:.1f}%)")
+            # Añadir al historial si no existe
+            st.session_state.historial.append(rec)
             
         if any(rec["vent"] > 50 for rec in recomendaciones):
             st.error("⚠️ RIESGO EXTREMO: Hay ventajas anómalas (>50%). Revisa bien los datos ingresados o posibles lesiones.")
+
+if len(st.session_state.historial) > 0:
+    st.markdown("---")
+    st.header("🛒 Tu Historial de Apuestas Sugeridas")
+    df_historial = pd.DataFrame(st.session_state.historial)
+    df_historial.columns = ['Mercado', 'Ventaja (%)', 'Apuesta (S/)']
+    st.dataframe(df_historial, use_container_width=True)
+    
+    csv = df_historial.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Descargar Reporte Completo (CSV)",
+        data=csv,
+        file_name='reporte_apuestas_kelly.csv',
+        mime='text/csv',
+    )
+    
+    if st.button("🗑️ Limpiar Historial"):
+        st.session_state.historial = []
+        st.rerun()
